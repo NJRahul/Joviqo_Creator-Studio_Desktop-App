@@ -39,9 +39,10 @@ const STATUS_COLORS: Record<DisplayStatus, { bg: string; color: string }> = {
 
 interface Props {
   userId: string
+  onUpload?: () => void
 }
 
-export default function ContentLibrary({ userId }: Props) {
+export default function ContentLibrary({ userId, onUpload }: Props) {
   const [videos, setVideos] = useState<ContentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string[]>([])
@@ -99,7 +100,7 @@ export default function ContentLibrary({ userId }: Props) {
             {publishedCount} published · {reviewCount} in review · {rejectedCount} rejected
           </p>
         </div>
-        <button className="btn-gradient px-5 py-2 text-sm">+ Upload video</button>
+        <button className="btn-gradient px-5 py-2 text-sm" onClick={onUpload}>+ Upload video</button>
       </div>
 
       {/* Filters */}

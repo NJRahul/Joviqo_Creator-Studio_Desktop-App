@@ -25,7 +25,6 @@ type Screen =
   | 'dashboard'
   | 'content'
   | 'paths'
-  | 'upload'
   | 'comments'
   | 'analytics'
   | 'earnings'
@@ -65,16 +64,6 @@ const NAV: NavItem[] = [
         <circle cx="3" cy="14" r="2" fill="currentColor" />
         <circle cx="9" cy="10" r="2" fill="currentColor" opacity="0.6" />
         <circle cx="15" cy="6" r="2" fill="currentColor" opacity="0.4" />
-      </svg>
-    ),
-  },
-  {
-    id: 'upload',
-    label: 'Upload',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <path d="M9 3v10M4 8l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M2 14h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
   },
@@ -139,6 +128,7 @@ const NAV: NavItem[] = [
 
 export default function Dashboard({ onLogout }: { onLogout?: () => void }) {
   const [screen, setScreen] = useState<Screen>('dashboard')
+  const [showUpload, setShowUpload] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -158,8 +148,10 @@ export default function Dashboard({ onLogout }: { onLogout?: () => void }) {
   const renderScreen = () => {
     switch (screen) {
       case 'dashboard': return <DashboardHome userId={creator?.id ?? ''} channelName={creator?.channel_name ?? null} />
-      case 'upload': return <UploadFlow />
-      case 'content': return <ContentLibrary userId={creator?.id ?? ''} />
+      case 'content':
+        return showUpload
+          ? <UploadFlow onBack={() => setShowUpload(false)} />
+          : <ContentLibrary userId={creator?.id ?? ''} onUpload={() => setShowUpload(true)} />
       case 'analytics': return <Analytics />
       case 'earnings': return <Earnings />
       default: return <PlaceholderScreen name={NAV.find((n) => n.id === screen)?.label ?? screen} />
@@ -207,7 +199,7 @@ export default function Dashboard({ onLogout }: { onLogout?: () => void }) {
           {NAV.map((item) => (
             <button
               key={item.id}
-              onClick={() => setScreen(item.id as Screen)}
+              onClick={() => { setScreen(item.id as Screen); setShowUpload(false) }}
               className={`sidebar-item w-full text-left ${screen === item.id ? 'active' : ''}`}
               style={{ justifyContent: collapsed ? 'center' : 'flex-start' }}
               title={collapsed ? item.label : undefined}

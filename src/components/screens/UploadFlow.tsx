@@ -8,7 +8,11 @@ const LANGUAGES = ['English', 'isiZulu', 'isiXhosa', 'Afrikaans', 'Sesotho', 'Se
 const SUBJECTS = ['Maths', 'Science', 'Literacy', 'Languages', 'Life Skills', 'Arts & Culture', 'Coding', 'Music', 'Geography', 'Stories']
 const GRADES = ['Preschool', 'Grade R', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9']
 
-export default function UploadFlow() {
+interface UploadFlowProps {
+  onBack?: () => void
+}
+
+export default function UploadFlow({ onBack }: UploadFlowProps) {
   const [step, setStep] = useState<Step>(1)
   const [dragging, setDragging] = useState(false)
 
@@ -159,6 +163,20 @@ export default function UploadFlow() {
 
   return (
     <div className="max-w-2xl">
+      {/* Back to library */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-sm mb-6"
+          style={{ color: 'var(--grey)', fontFamily: 'Nunito', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Back to library
+        </button>
+      )}
+
       {/* Step progress */}
       <div className="flex items-center gap-0 mb-8">
         {STEPS.map((s, i) => (
@@ -489,7 +507,10 @@ export default function UploadFlow() {
         </div>
       )}
       {step === 5 && submitted && (
-        <div className="flex justify-end mt-8">
+        <div className="flex justify-between mt-8">
+          {onBack && (
+            <button className="btn-gradient px-6 py-2.5 text-sm" onClick={onBack}>← Back to library</button>
+          )}
           <button className="btn-ghost px-6 py-2.5 text-sm" onClick={() => { setStep(1); setVideoFile(null); setTitle(''); setSubmitted(false); setVideoUrl(''); setThumbnailUrl(''); }}>Upload another video</button>
         </div>
       )}
