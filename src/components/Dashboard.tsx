@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import logo from '../imports/Joviqo_logo_4X_White_Fill.png'
 import mascot from '../imports/Mascot.png'
 import { supabase } from '../supabase'
@@ -13,6 +13,16 @@ interface CreatorProfile {
   email: string
   channel_name: string | null
   handle: string | null
+}
+
+interface AppNotification {
+  id: string
+  type: string
+  title: string
+  message: string | null
+  content_id: string | null
+  is_read: boolean
+  created_at: string
 }
 
 type NavItem = {
@@ -133,13 +143,30 @@ export default function Dashboard({ onLogout }: { onLogout?: () => void }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [creator, setCreator] = useState<CreatorProfile | null>(null)
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const notifChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       const { data } = await supabase.from('users').select('id, email, channel_name, handle').eq('id', user.id).single()
       if (data) setCreator({ id: data.id, email: data.email ?? user.email ?? '', channel_name: data.channel_name, handle: data.handle })
+
+      const { data: notifs } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      setNotifications(notifs ?? [])
+
+      notifChannelRef.current = supabase
+        .channel(`creator-notifs-${user.id}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+          (payload) => setNotifications((prev) => [payload.new as AppNotification, ...prev]))
+        .subscribe()
     })
+    return () => { if (notifChannelRef.current) supabase.removeChannel(notifChannelRef.current) }
   }, [])
 
   const displayName = creator?.channel_name ?? creator?.handle ?? '…'
@@ -298,44 +325,49 @@ export default function Dashboard({ onLogout }: { onLogout?: () => void }) {
                   <path d="M9 2a5 5 0 00-5 5v3l-1.5 2h13L14 10V7a5 5 0 00-5-5z" stroke="#B3B3BE" strokeWidth="1.5" strokeLinejoin="round" />
                   <path d="M7.5 14a1.5 1.5 0 003 0" stroke="#B3B3BE" strokeWidth="1.5" />
                 </svg>
-                {/* Badge */}
-                <div
-                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{ background: '#E63E54', color: 'white', fontFamily: 'Nunito', fontSize: '9px' }}
-                >
-                  3
-                </div>
+                {notifications.filter((n) => !n.is_read).length > 0 && (
+                  <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: '#E63E54', color: 'white', fontFamily: 'Nunito', fontSize: '9px', fontWeight: 700 }}>
+                    {notifications.filter((n) => !n.is_read).length > 9 ? '9+' : notifications.filter((n) => !n.is_read).length}
+                  </div>
+                )}
               </button>
               {notifOpen && (
-                <div
-                  className="absolute right-0 top-12 w-80 rounded-2xl overflow-hidden z-30"
-                  style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}
-                >
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--hairline)' }}>
+                <div className="absolute right-0 top-12 w-80 rounded-2xl overflow-hidden z-30" style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', boxShadow: '0 12px 40px rgba(0,0,0,0.6)', maxHeight: '400px', overflowY: 'auto' }}>
+                  <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--hairline)', position: 'sticky', top: 0, background: 'var(--slate)' }}>
                     <span className="text-sm font-bold" style={{ fontFamily: 'Baloo 2' }}>Notifications</span>
-                    <span className="text-xs" style={{ color: 'var(--joy-orange)', fontFamily: 'Nunito', cursor: 'pointer' }}>Mark all read</span>
+                    {notifications.some((n) => !n.is_read) && (
+                      <span className="text-xs" style={{ color: 'var(--joy-orange)', fontFamily: 'Nunito', cursor: 'pointer' }}
+                        onClick={async () => {
+                          if (!creator) return
+                          await supabase.from('notifications').update({ is_read: true }).eq('user_id', creator.id).eq('is_read', false)
+                          setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+                        }}>Mark all read</span>
+                    )}
                   </div>
-                  {[
-                    { icon: '✅', text: 'Counting with Zola Ep 3 passed review', time: '2 hrs ago', unread: true },
-                    { icon: '💬', text: 'Amahle M. left a comment on your video', time: '4 hrs ago', unread: true },
-                    { icon: '⚠️', text: 'Science Experiments was rejected — policy violation', time: 'Yesterday', unread: true },
-                  ].map((n, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-3 px-4 py-3"
-                      style={{
-                        background: n.unread ? 'rgba(255,138,0,0.05)' : 'transparent',
-                        borderBottom: '1px solid var(--hairline)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span className="text-base flex-shrink-0 mt-0.5">{n.icon}</span>
-                      <div>
-                        <p className="text-sm" style={{ fontFamily: 'Nunito', color: 'var(--snow)' }}>{n.text}</p>
-                        <p className="text-xs mt-0.5" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{n.time}</p>
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-6 text-center" style={{ color: 'var(--grey)', fontFamily: 'Nunito', fontSize: '13px' }}>No notifications yet</div>
+                  ) : notifications.map((n) => {
+                    const icon = n.type === 'approved' ? '✅' : n.type === 'rejected' ? '❌' : n.type === 'changes_requested' ? '✏️' : '🔔'
+                    const timeAgo = (() => { const diff = Date.now() - new Date(n.created_at).getTime(); const h = Math.floor(diff / 3600000); return h < 1 ? 'Just now' : h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago` })()
+                    return (
+                      <div key={n.id} className="flex items-start gap-3 px-4 py-3"
+                        style={{ background: n.is_read ? 'transparent' : 'rgba(255,138,0,0.05)', borderBottom: '1px solid var(--hairline)', cursor: 'pointer' }}
+                        onClick={async () => {
+                          if (!n.is_read) {
+                            await supabase.from('notifications').update({ is_read: true }).eq('id', n.id)
+                            setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, is_read: true } : x))
+                          }
+                        }}>
+                        <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold" style={{ fontFamily: 'Nunito', color: 'var(--snow)' }}>{n.title}</p>
+                          {n.message && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{n.message}</p>}
+                          <p className="text-xs mt-1" style={{ color: 'var(--grey)', fontFamily: 'Nunito', opacity: 0.7 }}>{timeAgo}</p>
+                        </div>
+                        {!n.is_read && <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--joy-orange)', flexShrink: 0, marginTop: '6px' }} />}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

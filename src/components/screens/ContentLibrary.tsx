@@ -108,6 +108,10 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Feedback popup
+  const [feedbackVideo, setFeedbackVideo] = useState<ContentRow | null>(null)
+  const [resubmitting, setResubmitting] = useState(false)
+
   useEffect(() => {
     if (!userId) return
     supabase
@@ -215,6 +219,30 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
     setVideos((v) => v.filter((x) => x.id !== deleteTarget.id))
     setDeleting(false)
     setDeleteTarget(null)
+  }
+
+  async function resubmit() {
+    if (!feedbackVideo) return
+    setResubmitting(true)
+    try {
+      await supabase.from('content').update({ status: 'pending' }).eq('id', feedbackVideo.id)
+      const { data: admins } = await supabase.from('users').select('id').eq('role', 'admin')
+      if (admins && admins.length > 0) {
+        await supabase.from('notifications').insert(
+          admins.map((a) => ({
+            user_id: a.id,
+            type: 'resubmission',
+            title: 'Creator resubmitted video',
+            message: `"${feedbackVideo.title ?? 'A video'}" has been updated and resubmitted for review.`,
+            content_id: feedbackVideo.id,
+          }))
+        )
+      }
+      setVideos((vs) => vs.map((v) => v.id === feedbackVideo.id ? { ...v, status: 'pending' as DbStatus } : v))
+      setFeedbackVideo(null)
+    } finally {
+      setResubmitting(false)
+    }
   }
 
   const publishedCount = videos.filter(v => v.status === 'approved').length
@@ -329,10 +357,13 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                       <td className="p-4">
                         <span className="status-chip" style={STATUS_COLORS[ds]}>{ds}</span>
                         {(video.review_note || video.rejection_reason) && (
-                          <div onClick={() => setExpandedVideo(video.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', cursor: 'pointer' }}>
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : '#FFC20E'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
-                            <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 700, color: video.status === 'rejected' ? '#E63E54' : '#FFC20E' }}>View feedback</span>
-                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setFeedbackVideo(video) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', padding: '4px 10px', borderRadius: '8px', background: video.status === 'rejected' ? 'rgba(230,62,84,0.12)' : 'rgba(255,138,0,0.12)', border: `1px solid ${video.status === 'rejected' ? 'rgba(230,62,84,0.45)' : 'rgba(255,138,0,0.45)'}`, cursor: 'pointer' }}
+                          >
+                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : 'var(--joy-orange)'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                            <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 700, color: video.status === 'rejected' ? '#E63E54' : 'var(--joy-orange)', whiteSpace: 'nowrap' }}>Admin note</span>
+                          </button>
                         )}
                       </td>
                       <td className="p-4 text-sm" style={{ color: 'var(--grey)', fontFamily: 'Nunito', whiteSpace: 'nowrap' }}>{fmtDate(video.uploaded_at)}</td>
@@ -678,6 +709,60 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
               <button onClick={confirmDelete} disabled={deleting} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: '#E63E54', border: 'none', color: 'white', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}>
                 {deleting ? 'Deleting…' : 'Yes, delete'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Feedback popup ── */}
+      {feedbackVideo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
+          onClick={() => setFeedbackVideo(null)}>
+          <div style={{ background: 'var(--charcoal)', border: '1px solid var(--hairline)', borderRadius: '20px', width: '460px', boxShadow: '0 24px 80px rgba(0,0,0,0.8)' }}
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* Coloured header */}
+            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--hairline)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '20px 20px 0 0', background: feedbackVideo.status === 'rejected' ? 'rgba(230,62,84,0.08)' : 'rgba(255,194,14,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: feedbackVideo.status === 'rejected' ? 'rgba(230,62,84,0.15)' : 'rgba(255,194,14,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={feedbackVideo.status === 'rejected' ? '#E63E54' : '#FFC20E'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                </div>
+                <div>
+                  <p style={{ fontFamily: 'Baloo 2', fontWeight: 800, fontSize: '16px', color: 'var(--snow)', margin: 0 }}>
+                    {feedbackVideo.status === 'rejected' ? 'Rejection feedback' : 'Changes requested'}
+                  </p>
+                  <p style={{ fontFamily: 'Nunito', fontSize: '12px', color: 'var(--grey)', margin: 0 }}>{feedbackVideo.title ?? 'Untitled'}</p>
+                </div>
+              </div>
+              <button onClick={() => setFeedbackVideo(null)} style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', borderRadius: '8px', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--grey)', cursor: 'pointer', fontSize: '15px', flexShrink: 0 }}>✕</button>
+            </div>
+
+            {/* Comment body */}
+            <div style={{ padding: '20px 24px' }}>
+              {feedbackVideo.rejection_reason && (
+                <div style={{ marginBottom: '12px', padding: '12px 14px', borderRadius: '10px', background: 'rgba(230,62,84,0.08)', border: '1px solid rgba(230,62,84,0.25)' }}>
+                  <p style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 800, color: '#E63E54', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Reason</p>
+                  <p style={{ fontFamily: 'Nunito', fontSize: '14px', fontWeight: 600, color: 'var(--snow)', margin: 0 }}>{feedbackVideo.rejection_reason}</p>
+                </div>
+              )}
+              {feedbackVideo.review_note && (
+                <div style={{ padding: '12px 14px', borderRadius: '10px', background: 'var(--slate)', border: '1px solid var(--hairline)' }}>
+                  <p style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 800, color: 'var(--grey)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Admin note</p>
+                  <p style={{ fontFamily: 'Nunito', fontSize: '14px', color: 'var(--silver)', margin: 0, lineHeight: 1.6 }}>{feedbackVideo.review_note}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '0 24px 24px', display: 'flex', gap: '12px' }}>
+              <button onClick={() => setFeedbackVideo(null)} style={{ flex: 1, padding: '11px', borderRadius: '12px', background: 'var(--slate)', border: '1px solid var(--hairline)', color: 'var(--silver)', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
+                Close
+              </button>
+              {feedbackVideo.status === 'changes_requested' && (
+                <button onClick={resubmit} disabled={resubmitting} style={{ flex: 2, padding: '11px', borderRadius: '12px', background: 'var(--brand-gradient)', border: 'none', color: 'white', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: resubmitting ? 'not-allowed' : 'pointer', opacity: resubmitting ? 0.7 : 1 }}>
+                  {resubmitting ? 'Notifying admin…' : "✓ I've made the changes — notify admin"}
+                </button>
+              )}
             </div>
           </div>
         </div>
