@@ -48,6 +48,7 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
   const [selected, setSelected] = useState<string[]>([])
   const [filter, setFilter] = useState<'All' | DisplayStatus>('All')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -92,7 +93,7 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
   const rejectedCount = videos.filter(v => v.status === 'rejected').length
 
   return (
-    <div>
+    <div onClick={() => setOpenMenu(null)}>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold" style={{ fontFamily: 'Baloo 2' }}>Content library</h2>
@@ -225,18 +226,11 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                         {fmtDate(video.uploaded_at)}
                       </td>
                       <td className="p-4 relative">
-                        <button onClick={() => setOpenMenu(openMenu === video.id ? null : video.id)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', cursor: 'pointer', color: 'var(--silver)' }}>⋯</button>
-                        {openMenu === video.id && (
-                          <div className="absolute right-4 top-12 z-20 rounded-xl overflow-hidden py-1 min-w-[160px]" style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}>
-                            {['Edit details', 'Analytics', 'Delete'].map((action) => (
-                              <button key={action} onClick={() => setOpenMenu(null)} className="w-full px-4 py-2.5 text-left text-sm font-semibold transition-colors" style={{ color: action === 'Delete' ? '#E63E54' : 'var(--silver)', fontFamily: 'Nunito', background: 'none', border: 'none', cursor: 'pointer' }}
-                                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--charcoal)' }}
-                                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}>
-                                {action}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect(); setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right }); setOpenMenu(openMenu === video.id ? null : video.id) }}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center"
+                          style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', cursor: 'pointer', color: 'var(--silver)' }}
+                        >⋯</button>
                       </td>
                     </tr>
                     {expandedVideo === video.id && (
@@ -274,6 +268,24 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
           </table>
         )}
       </div>
+
+      {/* Fixed-position kebab dropdown — escapes overflow:hidden card */}
+      {openMenu && (
+        <div
+          style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999, background: 'var(--slate)', border: '1px solid var(--hairline)', boxShadow: '0 12px 40px rgba(0,0,0,0.6)', borderRadius: '12px', padding: '4px 0', minWidth: '160px' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {['Edit details', 'Analytics', 'Delete'].map((action) => (
+            <button key={action} onClick={() => setOpenMenu(null)}
+              style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 600, color: action === 'Delete' ? '#E63E54' : 'var(--silver)', fontFamily: 'Nunito', background: 'none', border: 'none', cursor: 'pointer' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--charcoal)' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+            >
+              {action}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
