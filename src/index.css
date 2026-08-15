@@ -1,0 +1,197 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Nunito:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+:root {
+  --void: #0B0B0F;
+  --charcoal: #14141B;
+  --slate: #1E1E28;
+  --hairline: #2A2A36;
+  --snow: #FFFFFF;
+  --silver: #B3B3BE;
+  --grey: #6E6E7A;
+  --joy-orange: #FF8A00;
+  --sun-yellow: #FFC20E;
+  --leaf-green: #56B44A;
+  --deep-green: #2E8B3A;
+  --sky-blue: #1E88C7;
+  --berry-red: #E63E54;
+  --magenta: #E5399B;
+  --brand-gradient: linear-gradient(90deg, #FF8A00, #FFC20E, #56B44A, #1E88C7);
+  --brand-gradient-diag: linear-gradient(135deg, #FF8A00, #FFC20E, #56B44A, #1E88C7);
+  --shimmer: linear-gradient(90deg, #1E1E28 25%, #2A2A36 50%, #1E1E28 75%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--void);
+  color: var(--snow);
+  font-family: 'Nunito', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Baloo 2', sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--grey);
+}
+
+.brand-gradient-text {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.brand-gradient-bg {
+  background: var(--brand-gradient);
+}
+
+.brand-gradient-border {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+.btn-gradient {
+  background: var(--brand-gradient);
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.btn-gradient:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.btn-gradient:active {
+  transform: translateY(0);
+}
+
+.btn-ghost {
+  background: rgba(255,255,255,0.07);
+  color: var(--snow);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn-ghost:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.input-field {
+  background: var(--slate);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--snow);
+  font-family: 'Nunito', sans-serif;
+  font-size: 15px;
+  padding: 12px 16px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input-field:focus {
+  border-color: var(--joy-orange);
+  box-shadow: 0 0 0 3px rgba(255, 138, 0, 0.15);
+}
+.input-field::placeholder {
+  color: var(--grey);
+}
+
+.shimmer {
+  background: var(--shimmer);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--silver);
+  transition: background 0.15s, color 0.15s;
+  text-decoration: none;
+}
+.sidebar-item:hover {
+  background: var(--slate);
+  color: var(--snow);
+}
+.sidebar-item.active {
+  background: var(--slate);
+  color: var(--snow);
+  position: relative;
+}
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--brand-gradient);
+}
+
+.kpi-card {
+  background: var(--charcoal);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+}
+
+.card {
+  background: var(--charcoal);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer { animation: none; }
+  .btn-gradient:hover { transform: none; }
+}

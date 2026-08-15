@@ -1,0 +1,10 @@
+{
+  "description": "A desktop app designed with a cohesive brand identity and design system to deliver a seamless, professional user experience for efficient workflows.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
