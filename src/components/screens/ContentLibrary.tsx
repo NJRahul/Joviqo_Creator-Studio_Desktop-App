@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../../supabase'
 
 type DbStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested'
@@ -75,6 +75,7 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
   const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [expandedSeries, setExpandedSeries] = useState<Set<string>>(new Set())
 
   // Edit modal
   const [editTarget, setEditTarget] = useState<ContentRow | null>(null)
@@ -138,6 +139,19 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
     const matchesSearch = !searchQuery || (v.title ?? '').toLowerCase().includes(searchQuery.toLowerCase()) || (v.subject ?? '').toLowerCase().includes(searchQuery.toLowerCase())
     return matchesFilter && matchesSearch
   })
+
+  // Group into series and standalone
+  const seriesMap = new Map<string, ContentRow[]>()
+  const standalone: ContentRow[] = []
+  for (const v of filtered) {
+    if (v.is_series && v.series_name) {
+      if (!seriesMap.has(v.series_name)) seriesMap.set(v.series_name, [])
+      seriesMap.get(v.series_name)!.push(v)
+    } else {
+      standalone.push(v)
+    }
+  }
+  seriesMap.forEach((eps) => eps.sort((a, b) => (a.episode_number ?? 0) - (b.episode_number ?? 0)))
 
   const toggleSelect = (id: string) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id])
   const allSelected = filtered.length > 0 && filtered.every((v) => selected.includes(v.id))
@@ -249,6 +263,119 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
   const reviewCount = videos.filter(v => v.status === 'pending').length
   const rejectedCount = videos.filter(v => v.status === 'rejected').length
 
+  // Shared episode/video row renderer
+  function VideoRow({ video, isEpisode = false, isLastEpisode = false }: { video: ContentRow; isEpisode?: boolean; isLastEpisode?: boolean }) {
+    const ds = displayStatus(video.status)
+    return (
+      <Fragment>
+        <tr
+          className="group transition-colors"
+          style={{
+            borderBottom: expandedVideo === video.id ? 'none' : isEpisode && !isLastEpisode ? '1px solid rgba(255,255,255,0.04)' : '1px solid var(--hairline)',
+            background: selected.includes(video.id) ? 'rgba(255,138,0,0.05)' : isEpisode ? 'rgba(0,0,0,0.12)' : 'transparent',
+          }}
+          onMouseEnter={(e) => { if (!selected.includes(video.id)) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--slate)' }}
+          onMouseLeave={(e) => { if (!selected.includes(video.id)) (e.currentTarget as HTMLTableRowElement).style.background = selected.includes(video.id) ? 'rgba(255,138,0,0.05)' : isEpisode ? 'rgba(0,0,0,0.12)' : 'transparent' }}>
+          <td className="p-4">
+            <div onClick={(e) => { e.stopPropagation(); toggleSelect(video.id) }} className="w-4 h-4 rounded cursor-pointer flex items-center justify-center" style={{ background: selected.includes(video.id) ? 'var(--brand-gradient)' : 'var(--slate)', border: selected.includes(video.id) ? 'none' : '2px solid var(--hairline)' }}>
+              {selected.includes(video.id) && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-3.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </div>
+          </td>
+          <td className="p-4" style={isEpisode ? { paddingLeft: '20px' } : {}}>
+            <div className="flex items-center gap-3">
+              {isEpisode && <div style={{ width: '3px', height: '36px', background: 'rgba(255,138,0,0.35)', borderRadius: '2px', flexShrink: 0 }} />}
+              <div className="rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer"
+                style={{ width: isEpisode ? '70px' : '80px', height: isEpisode ? '40px' : '45px', background: 'var(--slate)' }}
+                onClick={() => setExpandedVideo(expandedVideo === video.id ? null : video.id)}>
+                {video.thumbnail_url
+                  ? <img src={video.thumbnail_url} alt={video.title ?? ''} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full flex items-center justify-center text-xs" style={{ color: 'var(--grey)' }}>—</div>}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.4)' }}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="white"><path d="M5 3l9 5-9 5V3z"/></svg>
+                </div>
+              </div>
+              <div>
+                {isEpisode && <p className="text-xs font-bold" style={{ color: 'var(--joy-orange)', fontFamily: 'Nunito', marginBottom: '1px' }}>Ep {video.episode_number ?? '?'}</p>}
+                <p className="text-sm font-semibold" style={{ fontFamily: 'Nunito', color: 'var(--snow)', maxWidth: '190px' }}>{video.title ?? '—'}</p>
+                {!isEpisode && video.grade && (
+                  <span className="status-chip" style={{ background: 'rgba(110,110,122,0.15)', color: 'var(--silver)', fontSize: '10px', padding: '1px 6px' }}>{video.grade}</span>
+                )}
+              </div>
+            </div>
+          </td>
+          <td className="p-4">
+            <p className="text-sm font-semibold" style={{ fontFamily: 'Nunito', color: 'var(--snow)' }}>{video.subject ?? '—'}</p>
+            {video.language && <p className="text-xs" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>🌐 {video.language}</p>}
+          </td>
+          <td className="p-4">
+            {video.audience
+              ? <span className="status-chip" style={{ background: video.audience === 'kids' ? 'rgba(86,180,74,0.15)' : 'rgba(30,136,199,0.15)', color: video.audience === 'kids' ? '#56B44A' : '#1E88C7' }}>{video.audience === 'kids' ? 'Kids' : video.audience === 'general' ? 'General' : '18+'}</span>
+              : <span style={{ color: 'var(--grey)', fontFamily: 'Nunito', fontSize: '14px' }}>—</span>}
+            {!isEpisode && video.age_band && <p className="text-xs mt-1" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{video.age_band}</p>}
+          </td>
+          <td className="p-4">
+            <span className="status-chip" style={STATUS_COLORS[ds]}>{ds}</span>
+            {(video.review_note || video.rejection_reason) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setFeedbackVideo(video) }}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', padding: '4px 10px', borderRadius: '8px', background: video.status === 'rejected' ? 'rgba(230,62,84,0.12)' : 'rgba(255,138,0,0.12)', border: `1px solid ${video.status === 'rejected' ? 'rgba(230,62,84,0.45)' : 'rgba(255,138,0,0.45)'}`, cursor: 'pointer' }}>
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : 'var(--joy-orange)'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 700, color: video.status === 'rejected' ? '#E63E54' : 'var(--joy-orange)', whiteSpace: 'nowrap' }}>Admin note</span>
+              </button>
+            )}
+          </td>
+          <td className="p-4 text-sm" style={{ color: 'var(--grey)', fontFamily: 'Nunito', whiteSpace: 'nowrap' }}>{fmtDate(video.uploaded_at)}</td>
+          <td className="p-4">
+            <button
+              onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect(); setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right }); setOpenMenu(openMenu === video.id ? null : video.id) }}
+              className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', cursor: 'pointer', color: 'var(--silver)' }}>⋯</button>
+          </td>
+        </tr>
+        {expandedVideo === video.id && (
+          <tr style={{ borderBottom: '1px solid var(--hairline)' }}>
+            <td colSpan={7} className="px-4 pb-4">
+              {(video.review_note || video.rejection_reason) && (
+                <div style={{ marginBottom: '10px', padding: '14px 16px', borderRadius: '12px', background: video.status === 'rejected' ? 'rgba(230,62,84,0.08)' : 'rgba(255,194,14,0.07)', border: `1px solid ${video.status === 'rejected' ? 'rgba(230,62,84,0.35)' : 'rgba(255,194,14,0.35)'}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : '#FFC20E'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                    <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 800, color: video.status === 'rejected' ? '#E63E54' : '#FFC20E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {video.status === 'rejected' ? 'Rejection reason' : 'Admin feedback — changes required'}
+                    </span>
+                  </div>
+                  {video.rejection_reason && <p style={{ fontFamily: 'Nunito', fontSize: '13px', fontWeight: 700, color: '#E63E54', margin: 0, marginBottom: video.review_note ? '4px' : '0' }}>{video.rejection_reason}</p>}
+                  {video.review_note && <p style={{ fontFamily: 'Nunito', fontSize: '13px', color: 'var(--silver)', margin: 0, lineHeight: 1.5 }}>{video.review_note}</p>}
+                </div>
+              )}
+              <div className="flex gap-5 p-4 rounded-xl" style={{ background: 'var(--slate)' }}>
+                {video.cover_image_url && (
+                  <div className="rounded-xl overflow-hidden flex-shrink-0" style={{ width: '200px', height: '112px' }}>
+                    <img src={video.cover_image_url} alt="Cover" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex-1 grid grid-cols-3 gap-4">
+                  {[
+                    { label: 'Subject', val: video.subject ?? '—' },
+                    { label: 'Language', val: video.language ?? '—' },
+                    { label: 'Grade', val: video.grade ?? '—' },
+                    { label: 'Age band', val: video.age_band ?? '—' },
+                    { label: 'XP Reward', val: video.xp_reward != null ? `${video.xp_reward} XP` : '—' },
+                    { label: 'Tags', val: (video.tags ?? []).join(', ') || '—' },
+                  ].map((f) => (
+                    <div key={f.label}>
+                      <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{f.label}</p>
+                      <p className="text-sm" style={{ color: 'var(--snow)', fontFamily: 'Nunito' }}>{f.val}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    )
+  }
+
   return (
     <div onClick={() => setOpenMenu(null)}>
       <div className="flex items-center justify-between mb-6">
@@ -310,118 +437,57 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((video) => {
-                const ds = displayStatus(video.status)
+              {/* Series groups */}
+              {Array.from(seriesMap.entries()).map(([sName, eps]) => {
+                const isExp = expandedSeries.has(sName)
+                const firstEp = eps[0]
+                const publishedEps = eps.filter(e => e.status === 'approved').length
                 return (
-                  <>
-                    <tr key={video.id} className="group transition-colors"
-                      style={{ borderBottom: expandedVideo === video.id ? 'none' : '1px solid var(--hairline)', background: selected.includes(video.id) ? 'rgba(255,138,0,0.05)' : 'transparent' }}
-                      onMouseEnter={(e) => { if (!selected.includes(video.id)) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--slate)' }}
-                      onMouseLeave={(e) => { if (!selected.includes(video.id)) (e.currentTarget as HTMLTableRowElement).style.background = selected.includes(video.id) ? 'rgba(255,138,0,0.05)' : 'transparent' }}>
-                      <td className="p-4">
-                        <div onClick={() => toggleSelect(video.id)} className="w-4 h-4 rounded cursor-pointer flex items-center justify-center" style={{ background: selected.includes(video.id) ? 'var(--brand-gradient)' : 'var(--slate)', border: selected.includes(video.id) ? 'none' : '2px solid var(--hairline)' }}>
-                          {selected.includes(video.id) && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-3.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                        </div>
-                      </td>
+                  <Fragment key={`series-${sName}`}>
+                    {/* Series header row */}
+                    <tr
+                      style={{ borderBottom: '1px solid var(--hairline)', background: 'rgba(255,138,0,0.04)', cursor: 'pointer' }}
+                      onClick={() => setExpandedSeries((prev) => { const n = new Set(prev); n.has(sName) ? n.delete(sName) : n.add(sName); return n })}>
+                      <td className="p-4"><div className="w-4 h-4" /></td>
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="rounded-lg overflow-hidden flex-shrink-0 relative cursor-pointer" style={{ width: '80px', height: '45px', background: 'var(--slate)' }} onClick={() => setExpandedVideo(expandedVideo === video.id ? null : video.id)}>
-                            {video.thumbnail_url ? <img src={video.thumbnail_url} alt={video.title ?? ''} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs" style={{ color: 'var(--grey)' }}>—</div>}
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.4)' }}>
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="white"><path d="M5 3l9 5-9 5V3z"/></svg>
-                            </div>
+                          <div className="rounded-lg overflow-hidden flex-shrink-0" style={{ width: '80px', height: '45px', background: 'var(--slate)' }}>
+                            {firstEp.thumbnail_url
+                              ? <img src={firstEp.thumbnail_url} alt={sName} className="w-full h-full object-cover" />
+                              : <div className="w-full h-full flex items-center justify-center" style={{ color: 'var(--grey)', fontSize: '18px' }}>▶</div>}
                           </div>
                           <div>
-                            <p className="text-sm font-semibold" style={{ fontFamily: 'Nunito', color: 'var(--snow)', maxWidth: '200px' }}>{video.title ?? '—'}</p>
-                            <div className="flex gap-1 mt-1 flex-wrap">
-                              {video.is_series && video.series_name != null && (
-                                <span className="status-chip" style={{ background: 'rgba(255,138,0,0.12)', color: 'var(--joy-orange)', fontSize: '10px', padding: '1px 6px' }}>Ep {video.episode_number} · {video.series_name}</span>
-                              )}
-                              {video.grade && <span className="status-chip" style={{ background: 'rgba(110,110,122,0.15)', color: 'var(--silver)', fontSize: '10px', padding: '1px 6px' }}>{video.grade}</span>}
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h10M3 12h6" stroke="var(--joy-orange)" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                              <p className="text-sm font-bold" style={{ fontFamily: 'Nunito', color: 'var(--joy-orange)' }}>{sName}</p>
                             </div>
+                            <p className="text-xs" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{eps.length} episode{eps.length !== 1 ? 's' : ''}</p>
                           </div>
                         </div>
                       </td>
+                      <td className="p-4"><span style={{ color: 'var(--grey)', fontFamily: 'Nunito', fontSize: '13px' }}>{firstEp.subject ?? '—'}</span></td>
+                      <td className="p-4"><span style={{ color: 'var(--grey)', fontFamily: 'Nunito', fontSize: '13px' }}>Series</span></td>
+                      <td className="p-4"><span style={{ color: 'var(--grey)', fontFamily: 'Nunito', fontSize: '13px' }}>{publishedEps}/{eps.length} published</span></td>
+                      <td className="p-4"><span style={{ color: 'var(--grey)', fontFamily: 'Nunito', fontSize: '13px' }}>—</span></td>
                       <td className="p-4">
-                        <p className="text-sm font-semibold" style={{ fontFamily: 'Nunito', color: 'var(--snow)' }}>{video.subject ?? '—'}</p>
-                        {video.language && <p className="text-xs" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>🌐 {video.language}</p>}
-                      </td>
-                      <td className="p-4">
-                        {video.audience ? (
-                          <span className="status-chip" style={{ background: video.audience === 'kids' ? 'rgba(86,180,74,0.15)' : 'rgba(30,136,199,0.15)', color: video.audience === 'kids' ? '#56B44A' : '#1E88C7' }}>
-                            {video.audience === 'kids' ? 'Kids' : video.audience === 'general' ? 'General' : '18+'}
-                          </span>
-                        ) : <span style={{ color: 'var(--grey)', fontFamily: 'Nunito', fontSize: '14px' }}>—</span>}
-                        {video.age_band && <p className="text-xs mt-1" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{video.age_band}</p>}
-                      </td>
-                      <td className="p-4">
-                        <span className="status-chip" style={STATUS_COLORS[ds]}>{ds}</span>
-                        {(video.review_note || video.rejection_reason) && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setFeedbackVideo(video) }}
-                            style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', padding: '4px 10px', borderRadius: '8px', background: video.status === 'rejected' ? 'rgba(230,62,84,0.12)' : 'rgba(255,138,0,0.12)', border: `1px solid ${video.status === 'rejected' ? 'rgba(230,62,84,0.45)' : 'rgba(255,138,0,0.45)'}`, cursor: 'pointer' }}
-                          >
-                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : 'var(--joy-orange)'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
-                            <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 700, color: video.status === 'rejected' ? '#E63E54' : 'var(--joy-orange)', whiteSpace: 'nowrap' }}>Admin note</span>
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-4 text-sm" style={{ color: 'var(--grey)', fontFamily: 'Nunito', whiteSpace: 'nowrap' }}>{fmtDate(video.uploaded_at)}</td>
-                      <td className="p-4">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect(); setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right }); setOpenMenu(openMenu === video.id ? null : video.id) }}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center"
-                          style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', cursor: 'pointer', color: 'var(--silver)' }}>⋯</button>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                          style={{ color: 'var(--grey)', transform: isExp ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'block' }}>
+                          <path d="M2 5l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
                       </td>
                     </tr>
-                    {expandedVideo === video.id && (
-                      <tr style={{ borderBottom: '1px solid var(--hairline)' }}>
-                        <td colSpan={7} className="px-4 pb-4">
-                          {/* Admin feedback banner */}
-                          {(video.review_note || video.rejection_reason) && (
-                            <div style={{ marginBottom: '10px', padding: '14px 16px', borderRadius: '12px', background: video.status === 'rejected' ? 'rgba(230,62,84,0.08)' : 'rgba(255,194,14,0.07)', border: `1px solid ${video.status === 'rejected' ? 'rgba(230,62,84,0.35)' : 'rgba(255,194,14,0.35)'}` }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : '#FFC20E'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
-                                <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 800, color: video.status === 'rejected' ? '#E63E54' : '#FFC20E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                  {video.status === 'rejected' ? 'Rejection reason' : 'Admin feedback — changes required'}
-                                </span>
-                              </div>
-                              {video.rejection_reason && (
-                                <p style={{ fontFamily: 'Nunito', fontSize: '13px', fontWeight: 700, color: '#E63E54', margin: 0, marginBottom: video.review_note ? '4px' : '0' }}>{video.rejection_reason}</p>
-                              )}
-                              {video.review_note && (
-                                <p style={{ fontFamily: 'Nunito', fontSize: '13px', color: 'var(--silver)', margin: 0, lineHeight: 1.5 }}>{video.review_note}</p>
-                              )}
-                            </div>
-                          )}
-                          <div className="flex gap-5 p-4 rounded-xl" style={{ background: 'var(--slate)' }}>
-                            {video.cover_image_url && (
-                              <div className="rounded-xl overflow-hidden flex-shrink-0" style={{ width: '200px', height: '112px' }}>
-                                <img src={video.cover_image_url} alt="Cover" className="w-full h-full object-cover" />
-                              </div>
-                            )}
-                            <div className="flex-1 grid grid-cols-3 gap-4">
-                              {[
-                                { label: 'Subject', val: video.subject ?? '—' },
-                                { label: 'Language', val: video.language ?? '—' },
-                                { label: 'Grade', val: video.grade ?? '—' },
-                                { label: 'Age band', val: video.age_band ?? '—' },
-                                { label: 'XP Reward', val: video.xp_reward != null ? `${video.xp_reward} XP` : '—' },
-                                { label: 'Tags', val: (video.tags ?? []).join(', ') || '—' },
-                              ].map((f) => (
-                                <div key={f.label}>
-                                  <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{f.label}</p>
-                                  <p className="text-sm" style={{ color: 'var(--snow)', fontFamily: 'Nunito' }}>{f.val}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
+                    {/* Episode rows */}
+                    {isExp && eps.map((video, epIdx) => (
+                      <VideoRow key={video.id} video={video} isEpisode isLastEpisode={epIdx === eps.length - 1} />
+                    ))}
+                  </Fragment>
                 )
               })}
+
+              {/* Standalone rows */}
+              {standalone.map((video) => (
+                <VideoRow key={video.id} video={video} />
+              ))}
             </tbody>
           </table>
         )}
@@ -452,32 +518,23 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
           onClick={() => setEditTarget(null)}>
           <div style={{ background: 'var(--charcoal)', border: '1px solid var(--hairline)', borderRadius: '20px', width: '600px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.8)' }}
             onClick={(e) => e.stopPropagation()}>
-
-            {/* Header */}
             <div style={{ padding: '24px 28px 0', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <h3 style={{ fontFamily: 'Baloo 2', fontWeight: 800, fontSize: '20px', color: 'var(--snow)', margin: 0 }}>Edit video details</h3>
                 <button onClick={() => setEditTarget(null)} style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--grey)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
               </div>
             </div>
-
-            {/* Scrollable body */}
             <div style={{ overflowY: 'auto', padding: '0 28px', flex: 1 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '8px' }}>
-
-                {/* ── DETAILS ── */}
                 <p style={SECTION_LABEL}>Details</p>
-
                 <div>
                   <label style={LABEL_STYLE}>Title *</label>
                   <input style={INPUT_STYLE} value={fTitle} onChange={(e) => setFTitle(e.target.value)} placeholder="Give your video a descriptive title" />
                 </div>
-
                 <div>
                   <label style={LABEL_STYLE}>Description</label>
                   <textarea style={{ ...INPUT_STYLE, resize: 'none', height: '80px' } as React.CSSProperties} value={fDescription} onChange={(e) => setFDescription(e.target.value)} placeholder="Describe what learners will gain from this video..." />
                 </div>
-
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={LABEL_STYLE}>Subject / Category</label>
@@ -493,7 +550,6 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     </select>
                   </div>
                 </div>
-
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={LABEL_STYLE}>Tags (comma-separated)</label>
@@ -504,8 +560,6 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     <input style={INPUT_STYLE} type="number" min="0" max="500" value={fXpReward} onChange={(e) => setFXpReward(e.target.value)} placeholder="150" />
                   </div>
                 </div>
-
-                {/* Thumbnail */}
                 <div>
                   <label style={LABEL_STYLE}>Video thumbnail</label>
                   <p style={{ fontFamily: 'Nunito', fontSize: '12px', color: 'var(--grey)', marginBottom: '8px', marginTop: '-2px' }}>Small 16:9 image shown in video cards</p>
@@ -522,8 +576,6 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     </div>
                   </div>
                 </div>
-
-                {/* Cover image */}
                 <div>
                   <label style={LABEL_STYLE}>Cover image</label>
                   <p style={{ fontFamily: 'Nunito', fontSize: '12px', color: 'var(--grey)', marginBottom: '8px', marginTop: '-2px' }}>Wide 16:9 banner shown on home page hero</p>
@@ -540,8 +592,6 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     </div>
                   </div>
                 </div>
-
-                {/* Series toggle */}
                 <div style={{ padding: '16px', borderRadius: '14px', background: 'var(--slate)', border: '1px solid var(--hairline)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: fIsSeries ? '12px' : '0' }}>
                     <div>
@@ -569,10 +619,7 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     </div>
                   )}
                 </div>
-
-                {/* ── AUDIENCE ── */}
                 <p style={{ ...SECTION_LABEL, marginTop: '4px' }}>Audience</p>
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[
                     { id: 'kids' as AudienceType, icon: '🌟', label: 'Made for Kids', desc: 'Content specifically for children. Requires human review before publishing.', color: '#56B44A' },
@@ -593,7 +640,6 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     </div>
                   ))}
                 </div>
-
                 {fAudience === 'kids' && (
                   <div style={{ padding: '16px', borderRadius: '14px', background: 'var(--slate)', border: '1px solid var(--hairline)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -623,10 +669,7 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     </div>
                   </div>
                 )}
-
-                {/* ── VISIBILITY ── */}
                 <p style={{ ...SECTION_LABEL, marginTop: '4px' }}>Visibility</p>
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '8px' }}>
                   {[
                     { id: 'public' as VisibilityType, label: 'Public', desc: 'Anyone can find and watch this video.' },
@@ -643,15 +686,10 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     </div>
                   ))}
                 </div>
-
               </div>
             </div>
-
-            {/* Footer */}
             <div style={{ padding: '16px 28px 24px', flexShrink: 0, borderTop: '1px solid var(--hairline)', display: 'flex', gap: '12px' }}>
-              <button onClick={() => setEditTarget(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'var(--slate)', border: '1px solid var(--hairline)', color: 'var(--silver)', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
-                Cancel
-              </button>
+              <button onClick={() => setEditTarget(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'var(--slate)', border: '1px solid var(--hairline)', color: 'var(--silver)', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
               <button onClick={saveEdit} disabled={saving || !fTitle} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'var(--brand-gradient)', border: 'none', color: 'white', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: saving || !fTitle ? 'not-allowed' : 'pointer', opacity: saving || !fTitle ? 0.6 : 1 }}>
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
@@ -714,30 +752,24 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
         </div>
       )}
 
-      {/* ── Feedback popup ── */}
+      {/* Feedback popup */}
       {feedbackVideo && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
           onClick={() => setFeedbackVideo(null)}>
           <div style={{ background: 'var(--charcoal)', border: '1px solid var(--hairline)', borderRadius: '20px', width: '460px', boxShadow: '0 24px 80px rgba(0,0,0,0.8)' }}
             onClick={(e) => e.stopPropagation()}>
-
-            {/* Coloured header */}
             <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--hairline)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '20px 20px 0 0', background: feedbackVideo.status === 'rejected' ? 'rgba(230,62,84,0.08)' : 'rgba(255,194,14,0.07)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: feedbackVideo.status === 'rejected' ? 'rgba(230,62,84,0.15)' : 'rgba(255,194,14,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={feedbackVideo.status === 'rejected' ? '#E63E54' : '#FFC20E'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
                 </div>
                 <div>
-                  <p style={{ fontFamily: 'Baloo 2', fontWeight: 800, fontSize: '16px', color: 'var(--snow)', margin: 0 }}>
-                    {feedbackVideo.status === 'rejected' ? 'Rejection feedback' : 'Changes requested'}
-                  </p>
+                  <p style={{ fontFamily: 'Baloo 2', fontWeight: 800, fontSize: '16px', color: 'var(--snow)', margin: 0 }}>{feedbackVideo.status === 'rejected' ? 'Rejection feedback' : 'Changes requested'}</p>
                   <p style={{ fontFamily: 'Nunito', fontSize: '12px', color: 'var(--grey)', margin: 0 }}>{feedbackVideo.title ?? 'Untitled'}</p>
                 </div>
               </div>
               <button onClick={() => setFeedbackVideo(null)} style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', borderRadius: '8px', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--grey)', cursor: 'pointer', fontSize: '15px', flexShrink: 0 }}>✕</button>
             </div>
-
-            {/* Comment body */}
             <div style={{ padding: '20px 24px' }}>
               {feedbackVideo.rejection_reason && (
                 <div style={{ marginBottom: '12px', padding: '12px 14px', borderRadius: '10px', background: 'rgba(230,62,84,0.08)', border: '1px solid rgba(230,62,84,0.25)' }}>
@@ -752,12 +784,8 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                 </div>
               )}
             </div>
-
-            {/* Footer */}
             <div style={{ padding: '0 24px 24px', display: 'flex', gap: '12px' }}>
-              <button onClick={() => setFeedbackVideo(null)} style={{ flex: 1, padding: '11px', borderRadius: '12px', background: 'var(--slate)', border: '1px solid var(--hairline)', color: 'var(--silver)', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
-                Close
-              </button>
+              <button onClick={() => setFeedbackVideo(null)} style={{ flex: 1, padding: '11px', borderRadius: '12px', background: 'var(--slate)', border: '1px solid var(--hairline)', color: 'var(--silver)', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>Close</button>
               {feedbackVideo.status === 'changes_requested' && (
                 <button onClick={resubmit} disabled={resubmitting} style={{ flex: 2, padding: '11px', borderRadius: '12px', background: 'var(--brand-gradient)', border: 'none', color: 'white', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: resubmitting ? 'not-allowed' : 'pointer', opacity: resubmitting ? 0.7 : 1 }}>
                   {resubmitting ? 'Notifying admin…' : "✓ I've made the changes — notify admin"}

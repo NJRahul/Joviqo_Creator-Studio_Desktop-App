@@ -236,9 +236,41 @@ export default function UploadFlow({ onBack }: UploadFlowProps) {
         <div>
           <h2 className="text-xl font-bold mb-6" style={{ fontFamily: 'Baloo 2' }}>Video details</h2>
           <div className="space-y-5">
+
+            {/* Series toggle — FIRST */}
+            <div className="p-4 rounded-2xl" style={{ background: 'var(--slate)', border: '1px solid var(--hairline)' }}>
+              <div className="flex items-center justify-between" style={{ marginBottom: isSeries ? '14px' : '0' }}>
+                <div>
+                  <p className="text-sm font-bold" style={{ fontFamily: 'Nunito', color: 'var(--snow)' }}>Part of a series?</p>
+                  <p className="text-xs" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>Group this video with other episodes under one series</p>
+                </div>
+                <button onClick={() => setIsSeries(!isSeries)} style={{ width: '44px', height: '24px', background: isSeries ? 'var(--brand-gradient)' : 'var(--hairline)', borderRadius: '999px', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+                  <div style={{ position: 'absolute', top: '3px', left: isSeries ? '23px' : '3px', width: '18px', height: '18px', background: 'white', borderRadius: '50%', transition: 'left 0.2s' }} />
+                </button>
+              </div>
+              {isSeries && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-3">
+                    <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Series name *</label>
+                    <input className="input-field" style={{ background: 'var(--charcoal)' }} placeholder="e.g. Counting with Zola" value={seriesName} onChange={(e) => setSeriesName(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Episode #</label>
+                    <input className="input-field" style={{ background: 'var(--charcoal)' }} type="number" min="1" placeholder="1" value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Total episodes</label>
+                    <input className="input-field" style={{ background: 'var(--charcoal)' }} type="number" min="1" placeholder="10" value={totalEpisodes} onChange={(e) => setTotalEpisodes(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Title *</label>
-              <input className="input-field" placeholder="Give your video a descriptive title" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <input className="input-field"
+                placeholder={isSeries && seriesName && episodeNumber ? `${seriesName} — Episode ${episodeNumber}` : 'Give your video a descriptive title'}
+                value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
             <div>
               <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Description</label>
@@ -306,35 +338,6 @@ export default function UploadFlow({ onBack }: UploadFlowProps) {
                   <span className="text-xs" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>{coverFile ? 'Change' : 'Upload custom'}</span>
                 </div>
               </div>
-            </div>
-
-            {/* Series toggle */}
-            <div className="p-4 rounded-2xl" style={{ background: 'var(--slate)', border: '1px solid var(--hairline)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-sm font-bold" style={{ fontFamily: 'Nunito', color: 'var(--snow)' }}>Part of a series?</p>
-                  <p className="text-xs" style={{ color: 'var(--grey)', fontFamily: 'Nunito' }}>Group this video with other episodes</p>
-                </div>
-                <button onClick={() => setIsSeries(!isSeries)} style={{ width: '44px', height: '24px', background: isSeries ? 'var(--brand-gradient)' : 'var(--hairline)', borderRadius: '999px', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s' }}>
-                  <div style={{ position: 'absolute', top: '3px', left: isSeries ? '23px' : '3px', width: '18px', height: '18px', background: 'white', borderRadius: '50%', transition: 'left 0.2s' }} />
-                </button>
-              </div>
-              {isSeries && (
-                <div className="grid grid-cols-3 gap-3 mt-3">
-                  <div className="col-span-3">
-                    <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Series name</label>
-                    <input className="input-field" style={{ background: 'var(--charcoal)' }} placeholder="e.g. Counting with Zola" value={seriesName} onChange={(e) => setSeriesName(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Episode #</label>
-                    <input className="input-field" style={{ background: 'var(--charcoal)' }} type="number" min="1" placeholder="1" value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: 'var(--silver)', fontFamily: 'Nunito' }}>Total episodes</label>
-                    <input className="input-field" style={{ background: 'var(--charcoal)' }} type="number" min="1" placeholder="10" value={totalEpisodes} onChange={(e) => setTotalEpisodes(e.target.value)} />
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
