@@ -27,6 +27,8 @@ interface ContentRow {
   tags: string[] | null
   uploaded_at: string | null
   visibility: string | null
+  review_note: string | null
+  rejection_reason: string | null
 }
 
 function displayStatus(s: DbStatus): DisplayStatus {
@@ -326,6 +328,12 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                       </td>
                       <td className="p-4">
                         <span className="status-chip" style={STATUS_COLORS[ds]}>{ds}</span>
+                        {(video.review_note || video.rejection_reason) && (
+                          <div onClick={() => setExpandedVideo(video.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', cursor: 'pointer' }}>
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : '#FFC20E'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                            <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 700, color: video.status === 'rejected' ? '#E63E54' : '#FFC20E' }}>View feedback</span>
+                          </div>
+                        )}
                       </td>
                       <td className="p-4 text-sm" style={{ color: 'var(--grey)', fontFamily: 'Nunito', whiteSpace: 'nowrap' }}>{fmtDate(video.uploaded_at)}</td>
                       <td className="p-4">
@@ -338,6 +346,23 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                     {expandedVideo === video.id && (
                       <tr style={{ borderBottom: '1px solid var(--hairline)' }}>
                         <td colSpan={7} className="px-4 pb-4">
+                          {/* Admin feedback banner */}
+                          {(video.review_note || video.rejection_reason) && (
+                            <div style={{ marginBottom: '10px', padding: '14px 16px', borderRadius: '12px', background: video.status === 'rejected' ? 'rgba(230,62,84,0.08)' : 'rgba(255,194,14,0.07)', border: `1px solid ${video.status === 'rejected' ? 'rgba(230,62,84,0.35)' : 'rgba(255,194,14,0.35)'}` }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M14 2H2a1 1 0 00-1 1v8a1 1 0 001 1h3l3 3 3-3h3a1 1 0 001-1V3a1 1 0 00-1-1z" stroke={video.status === 'rejected' ? '#E63E54' : '#FFC20E'} strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                                <span style={{ fontFamily: 'Nunito', fontSize: '11px', fontWeight: 800, color: video.status === 'rejected' ? '#E63E54' : '#FFC20E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                  {video.status === 'rejected' ? 'Rejection reason' : 'Admin feedback — changes required'}
+                                </span>
+                              </div>
+                              {video.rejection_reason && (
+                                <p style={{ fontFamily: 'Nunito', fontSize: '13px', fontWeight: 700, color: '#E63E54', margin: 0, marginBottom: video.review_note ? '4px' : '0' }}>{video.rejection_reason}</p>
+                              )}
+                              {video.review_note && (
+                                <p style={{ fontFamily: 'Nunito', fontSize: '13px', color: 'var(--silver)', margin: 0, lineHeight: 1.5 }}>{video.review_note}</p>
+                              )}
+                            </div>
+                          )}
                           <div className="flex gap-5 p-4 rounded-xl" style={{ background: 'var(--slate)' }}>
                             {video.cover_image_url && (
                               <div className="rounded-xl overflow-hidden flex-shrink-0" style={{ width: '200px', height: '112px' }}>
