@@ -37,6 +37,9 @@ const STATUS_COLORS: Record<DisplayStatus, { bg: string; color: string }> = {
   'Changes requested': { bg: 'rgba(255,194,14,0.15)', color: '#FFC20E' },
 }
 
+const LABEL_STYLE: React.CSSProperties = { display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--grey)', fontFamily: 'Nunito', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }
+const INPUT_STYLE: React.CSSProperties = { width: '100%', background: 'var(--slate)', border: '1px solid var(--hairline)', borderRadius: '10px', padding: '10px 14px', color: 'var(--snow)', fontFamily: 'Nunito', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }
+
 interface Props {
   userId: string
   onUpload?: () => void
@@ -51,6 +54,25 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
   const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Edit modal
+  const [editTarget, setEditTarget] = useState<ContentRow | null>(null)
+  const [fTitle, setFTitle] = useState('')
+  const [fSubject, setFSubject] = useState('')
+  const [fLanguage, setFLanguage] = useState('')
+  const [fAudience, setFAudience] = useState('')
+  const [fAgeBand, setFAgeBand] = useState('')
+  const [fGrade, setFGrade] = useState('')
+  const [fXpReward, setFXpReward] = useState('')
+  const [fTags, setFTags] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Analytics panel
+  const [analyticsTarget, setAnalyticsTarget] = useState<ContentRow | null>(null)
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!userId) return
@@ -86,6 +108,46 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
   function fmtDate(iso: string | null) {
     if (!iso) return '—'
     return new Date(iso).toLocaleDateString('en-ZA')
+  }
+
+  function openEdit(video: ContentRow) {
+    setEditTarget(video)
+    setFTitle(video.title ?? '')
+    setFSubject(video.subject ?? '')
+    setFLanguage(video.language ?? '')
+    setFAudience(video.audience ?? '')
+    setFAgeBand(video.age_band ?? '')
+    setFGrade(video.grade ?? '')
+    setFXpReward(video.xp_reward?.toString() ?? '')
+    setFTags((video.tags ?? []).join(', '))
+  }
+
+  async function saveEdit() {
+    if (!editTarget) return
+    setSaving(true)
+    await supabase.from('content').update({
+      title: fTitle || null,
+      subject: fSubject || null,
+      language: fLanguage || null,
+      audience: fAudience || null,
+      age_band: fAgeBand || null,
+      grade: fGrade || null,
+      xp_reward: fXpReward ? parseInt(fXpReward) : null,
+      tags: fTags ? fTags.split(',').map((t) => t.trim()).filter(Boolean) : null,
+    }).eq('id', editTarget.id)
+    setSaving(false)
+    setEditTarget(null)
+    const { data } = await supabase.from('content').select('*').eq('creator_id', userId).order('uploaded_at', { ascending: false })
+    setVideos(data ?? [])
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    await supabase.from('content').delete().eq('id', deleteTarget.id)
+    setVideos((v) => v.filter((x) => x.id !== deleteTarget.id))
+    setDeleting(false)
+    setDeleteTarget(null)
   }
 
   const publishedCount = videos.filter(v => v.status === 'approved').length
@@ -225,7 +287,7 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
                       <td className="p-4 text-sm" style={{ color: 'var(--grey)', fontFamily: 'Nunito', whiteSpace: 'nowrap' }}>
                         {fmtDate(video.uploaded_at)}
                       </td>
-                      <td className="p-4 relative">
+                      <td className="p-4">
                         <button
                           onClick={(e) => { e.stopPropagation(); const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect(); setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right }); setOpenMenu(openMenu === video.id ? null : video.id) }}
                           className="w-7 h-7 rounded-lg flex items-center justify-center"
@@ -269,21 +331,168 @@ export default function ContentLibrary({ userId, onUpload }: Props) {
         )}
       </div>
 
-      {/* Fixed-position kebab dropdown — escapes overflow:hidden card */}
+      {/* Fixed-position kebab dropdown */}
       {openMenu && (
         <div
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999, background: 'var(--slate)', border: '1px solid var(--hairline)', boxShadow: '0 12px 40px rgba(0,0,0,0.6)', borderRadius: '12px', padding: '4px 0', minWidth: '160px' }}
           onClick={(e) => e.stopPropagation()}
         >
-          {['Edit details', 'Analytics', 'Delete'].map((action) => (
-            <button key={action} onClick={() => setOpenMenu(null)}
-              style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 600, color: action === 'Delete' ? '#E63E54' : 'var(--silver)', fontFamily: 'Nunito', background: 'none', border: 'none', cursor: 'pointer' }}
+          {[
+            {
+              label: 'Edit details',
+              danger: false,
+              action: () => {
+                const v = videos.find((x) => x.id === openMenu)
+                if (v) openEdit(v)
+                setOpenMenu(null)
+              },
+            },
+            {
+              label: 'Analytics',
+              danger: false,
+              action: () => {
+                const v = videos.find((x) => x.id === openMenu)
+                if (v) setAnalyticsTarget(v)
+                setOpenMenu(null)
+              },
+            },
+            {
+              label: 'Delete',
+              danger: true,
+              action: () => {
+                const v = videos.find((x) => x.id === openMenu)
+                if (v) setDeleteTarget({ id: v.id, label: v.title ?? 'this video' })
+                setOpenMenu(null)
+              },
+            },
+          ].map((item) => (
+            <button
+              key={item.label}
+              onClick={(e) => { e.stopPropagation(); item.action() }}
+              style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 600, color: item.danger ? '#E63E54' : 'var(--silver)', fontFamily: 'Nunito', background: 'none', border: 'none', cursor: 'pointer' }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--charcoal)' }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
             >
-              {action}
+              {item.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Edit details modal */}
+      {editTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
+          onClick={() => setEditTarget(null)}>
+          <div style={{ background: 'var(--charcoal)', border: '1px solid var(--hairline)', borderRadius: '20px', padding: '32px', width: '480px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.7)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontFamily: 'Baloo 2', fontWeight: 800, fontSize: '20px', color: 'var(--snow)', marginBottom: '24px' }}>Edit details</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={LABEL_STYLE}>Title</label>
+                <input style={INPUT_STYLE} value={fTitle} onChange={(e) => setFTitle(e.target.value)} placeholder="Video title" />
+              </div>
+              <div>
+                <label style={LABEL_STYLE}>Subject</label>
+                <input style={INPUT_STYLE} value={fSubject} onChange={(e) => setFSubject(e.target.value)} placeholder="e.g. Mathematics" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={LABEL_STYLE}>Language</label>
+                  <input style={INPUT_STYLE} value={fLanguage} onChange={(e) => setFLanguage(e.target.value)} placeholder="e.g. English" />
+                </div>
+                <div>
+                  <label style={LABEL_STYLE}>Audience</label>
+                  <select style={{ ...INPUT_STYLE, appearance: 'none' }} value={fAudience} onChange={(e) => setFAudience(e.target.value)}>
+                    <option value="">— Select —</option>
+                    <option value="Kids">Kids</option>
+                    <option value="Parents">Parents</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={LABEL_STYLE}>Age band</label>
+                  <input style={INPUT_STYLE} value={fAgeBand} onChange={(e) => setFAgeBand(e.target.value)} placeholder="e.g. 6–9" />
+                </div>
+                <div>
+                  <label style={LABEL_STYLE}>Grade</label>
+                  <input style={INPUT_STYLE} value={fGrade} onChange={(e) => setFGrade(e.target.value)} placeholder="e.g. Grade 3" />
+                </div>
+              </div>
+              <div>
+                <label style={LABEL_STYLE}>XP Reward</label>
+                <input style={INPUT_STYLE} type="number" value={fXpReward} onChange={(e) => setFXpReward(e.target.value)} placeholder="e.g. 50" />
+              </div>
+              <div>
+                <label style={LABEL_STYLE}>Tags (comma-separated)</label>
+                <input style={INPUT_STYLE} value={fTags} onChange={(e) => setFTags(e.target.value)} placeholder="fractions, math, grade3" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '28px' }}>
+              <button onClick={() => setEditTarget(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'var(--slate)', border: '1px solid var(--hairline)', color: 'var(--silver)', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={saveEdit} disabled={saving} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'var(--brand-gradient)', border: 'none', color: 'white', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analytics modal */}
+      {analyticsTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
+          onClick={() => setAnalyticsTarget(null)}>
+          <div style={{ background: 'var(--charcoal)', border: '1px solid var(--hairline)', borderRadius: '20px', padding: '32px', width: '480px', boxShadow: '0 24px 80px rgba(0,0,0,0.7)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+              <h3 style={{ fontFamily: 'Baloo 2', fontWeight: 800, fontSize: '20px', color: 'var(--snow)', margin: 0 }}>Analytics</h3>
+              <button onClick={() => setAnalyticsTarget(null)} style={{ background: 'none', border: 'none', color: 'var(--grey)', cursor: 'pointer', fontSize: '20px', lineHeight: 1 }}>✕</button>
+            </div>
+            <p style={{ fontFamily: 'Nunito', fontSize: '14px', color: 'var(--grey)', marginBottom: '24px', marginTop: '-12px' }}>{analyticsTarget.title ?? 'Untitled'}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+              {[
+                { label: 'Total views', value: '—', icon: '👁' },
+                { label: 'Watch time', value: '—', icon: '⏱' },
+                { label: 'Completion rate', value: '—', icon: '✅' },
+                { label: 'XP awarded', value: analyticsTarget.xp_reward != null ? `${analyticsTarget.xp_reward} XP` : '—', icon: '⭐' },
+              ].map((stat) => (
+                <div key={stat.label} style={{ background: 'var(--slate)', border: '1px solid var(--hairline)', borderRadius: '14px', padding: '16px' }}>
+                  <p style={{ fontFamily: 'Nunito', fontSize: '12px', color: 'var(--grey)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>{stat.icon} {stat.label}</p>
+                  <p style={{ fontFamily: 'Baloo 2', fontSize: '24px', fontWeight: 800, color: 'var(--snow)', margin: 0 }}>{stat.value}</p>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontFamily: 'Nunito', fontSize: '13px', color: 'var(--grey)', textAlign: 'center' }}>
+              Detailed analytics will appear here once your video is published and has views.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}
+          onClick={() => setDeleteTarget(null)}>
+          <div style={{ background: 'var(--charcoal)', border: '1px solid var(--hairline)', borderRadius: '20px', padding: '32px', width: '400px', boxShadow: '0 24px 80px rgba(0,0,0,0.7)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(230,62,84,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E63E54" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+            </div>
+            <h3 style={{ fontFamily: 'Baloo 2', fontWeight: 800, fontSize: '18px', color: 'var(--snow)', marginBottom: '8px' }}>Delete video?</h3>
+            <p style={{ fontFamily: 'Nunito', fontSize: '14px', color: 'var(--grey)', marginBottom: '28px', lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--silver)' }}>{deleteTarget.label}</strong> will be permanently removed. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={() => setDeleteTarget(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'var(--slate)', border: '1px solid var(--hairline)', color: 'var(--silver)', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={confirmDelete} disabled={deleting} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: '#E63E54', border: 'none', color: 'white', fontFamily: 'Nunito', fontWeight: 700, fontSize: '14px', cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}>
+                {deleting ? 'Deleting…' : 'Yes, delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
